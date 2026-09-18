@@ -105,19 +105,18 @@ def write_outputs(
     if not embed and not create_lrc:
         return WriteResult(audio_path, False, "至少选择一种输出方式")
     data_paths.ensure()
-    backup_dir = _unique_backup_dir(data_paths, audio_path.stem)
-    audio_backup = backup_dir / audio_path.name
+    backup_dir: Path | None = None
     lrc_path = audio_path.with_suffix(".lrc")
-    lrc_backup = backup_dir / lrc_path.name
+    lrc_backup: Path | None = None
     audio_temp: Path | None = None
+    audio_rollback: Path | None = None
     lrc_temp: Path | None = None
     original_snapshot: dict[str, Any] | None = None
-    audio_committed = False
+    audio_staged = False
     lrc_committed = False
 
     try:
         if embed:
-            shutil.copy2(audio_path, audio_backup)
             original_snapshot = nonlyrics_snapshot(audio_path)
             audio_temp = _temp_path(audio_path.parent, audio_path.suffix)
             shutil.copy2(audio_path, audio_temp)
@@ -127,6 +126,8 @@ def write_outputs(
                 raise ValueError("写入校验发现原有标签、封面或音频时长发生变化")
         if create_lrc:
             if lrc_path.exists():
+                backup_dir = _unique_backup_dir(data_paths, audio_path.stem)
+                lrc_backup = backup_dir / lrc_path.name
                 shutil.copy2(lrc_path, lrc_backup)
             lrc_temp = _temp_path(audio_path.parent, ".lrc")
             lrc_temp.write_text(lrc_text, encoding="utf-8-sig", newline="\n")
@@ -134,9 +135,11 @@ def write_outputs(
                 raise ValueError("LRC 临时文件复读不一致")
 
         if embed and audio_temp:
+            audio_rollback = _temp_path(audio_path.parent, audio_path.suffix)
+            _commit_file(audio_path, audio_rollback)
+            audio_staged = True
             _commit_file(audio_temp, audio_path)
             audio_temp = None
-            audio_committed = True
         if create_lrc and lrc_temp:
             _commit_file(lrc_temp, lrc_path)
             lrc_temp = None
@@ -148,25 +151,36 @@ def write_outputs(
                 raise ValueError("最终复读发现非歌词信息发生变化")
         if create_lrc and normalize_text(read_text_file(lrc_path)) != normalize_text(lrc_text):
             raise ValueError("最终 LRC 复读不一致")
+        if audio_rollback:
+            audio_rollback.unlink()
+            audio_rollback = None
         return WriteResult(audio_path, True, "写入并复读验证成功", backup_dir)
     except Exception as exc:
         try:
-            if audio_committed and audio_backup.exists():
-                restore = _temp_path(audio_path.parent, audio_path.suffix)
-                shutil.copy2(audio_backup, restore)
-                _commit_file(restore, audio_path)
+            if audio_staged and audio_rollback and audio_rollback.exists():
+                _commit_file(audio_rollback, audio_path)
+                audio_rollback = None
             if lrc_committed:
-                if lrc_backup.exists():
+                if lrc_backup and lrc_backup.exists():
                     restore_lrc = _temp_path(audio_path.parent, ".lrc")
                     shutil.copy2(lrc_backup, restore_lrc)
                     _commit_file(restore_lrc, lrc_path)
                 elif lrc_path.exists():
                     lrc_path.unlink()
         except OSError as rollback_error:
-            return WriteResult(audio_path, False, f"写入失败：{exc}；回滚也失败：{rollback_error}", backup_dir)
+            recovery_note = ""
+            if audio_staged and audio_rollback and audio_rollback.exists():
+                recovery_note = f"；原音频仍保留在 {audio_rollback}，请勿删除"
+                audio_rollback = None
+            return WriteResult(
+                audio_path,
+                False,
+                f"写入失败：{exc}；回滚也失败：{rollback_error}{recovery_note}",
+                backup_dir,
+            )
         return WriteResult(audio_path, False, f"写入失败并已回滚：{exc}", backup_dir)
     finally:
-        for temporary in (audio_temp, lrc_temp):
+        for temporary in (audio_temp, audio_rollback, lrc_temp):
             if temporary and temporary.exists():
                 try:
                     temporary.unlink()

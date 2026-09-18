@@ -1506,7 +1506,7 @@ class MainWindow(QMainWindow):
             answer = QMessageBox.question(
                 self,
                 "替换已有歌词",
-                f"{len(existing)} 首音乐已经有内嵌歌词或同名 LRC。写入会替换所选输出位置的歌词，并保留备份。继续吗？",
+                f"{len(existing)} 首音乐已经有内嵌歌词或同名 LRC。写入会替换所选输出位置的歌词；只备份被覆盖的旧 LRC，不长期备份原音频。继续吗？",
             )
             if answer != QMessageBox.StandardButton.Yes:
                 return
@@ -1656,7 +1656,7 @@ class MainWindow(QMainWindow):
         elif failures:
             QMessageBox.warning(self, "部分写入失败", f"成功 {success} 首，失败 {len(failures)} 首：\n\n" + "\n".join(failures[:10]))
         else:
-            QMessageBox.information(self, "写入完成", f"{success} 首音乐已写入并复读验证成功。原文件备份保存在歌词工具数据文件夹。")
+            QMessageBox.information(self, "写入完成", f"{success} 首音乐已写入并复读验证成功。原音频不会保存在备份目录。")
         self.status_label.setText(f"写入完成：成功 {success}，失败 {len(failures)}")
 
     def _output_toggled(self, source: QCheckBox, checked: bool) -> None:
@@ -1820,7 +1820,7 @@ HELP_TEXT = """音乐歌词工具使用说明
 4. 点击“② 音频复核勾选项”。每首音频只识别一次，再比较所有有效候选；中文同音字可模糊匹配。每完成一首立即刷新列表。大幅偏移会被视为漏识别或重复段落错配，不会自动修改。底部按钮可暂停、继续或终止任务。
 5. 模型只有在文字相似度、锚点数量、覆盖范围和残差同时达标时，才会判定通过或生成整体偏移/线性漂移校正预览。低置信度、现场版、合唱、强混响等情况不会自动修改。
 6. 选择“嵌入音频文件”和/或“生成同名 LRC”，然后点击“③ 写入勾选项”。试听确认单首歌词后，也可直接点击“写入当前歌词”。
-7. 写入先在同目录临时副本中完成，复读验证歌词、原标签、封面、格式和时长后才替换原文件。备份保存在数据文件夹。
+7. 写入先在同目录临时副本中完成，复读验证歌词、原标签、封面、格式和时长后才替换原文件。原音频只在写入期间作为临时回滚点，成功后立即删除，不会保存在备份目录；仅被覆盖的旧 LRC 会保留小体积备份。
 
 兼容性说明
 

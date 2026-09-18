@@ -1,0 +1,13 @@
+.venv/
+.build/
+.pytest_cache/
+.test-tmp/
+__pycache__/
+*.pyc
+portable/
+.test-real/
+音乐歌词工具数据/
+.gpu-extract/
+.gpu-wheel-check/
+.packaged-language-test/
+.packaged-model-test/
